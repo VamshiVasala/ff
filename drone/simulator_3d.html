@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlyBrain 5-Inch FPV Drone - Calibrated 3D Gate Mission</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #090d16;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1;
+    }
+    /* Top Header Bar */
+    .top-bar {
+      position: absolute;
+      top: 16px; left: 20px; right: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .badge-title {
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 10px;
+      padding: 10px 18px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .badge-title h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge-title p {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .status-pill {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    /* Floating UI Controls */
+    .controls-panel {
+      position: absolute;
+      bottom: 20px; left: 20px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 12px 16px;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    button {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover { background: #0369a1; transform: translateY(-1px); }
+    button.btn-sec {
+      background: rgba(51, 65, 85, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+    button.btn-sec:hover { background: rgba(71, 85, 105, 0.9); }
+
+    /* FPV HUD Overlay */
+    .fpv-hud {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 300px; height: 200px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 10px;
+    }
+    .hud-crosshair {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 22px; height: 22px;
+      transform: translate(-50%, -50%);
+      border: 1.5px solid rgba(56, 189, 248, 0.8);
+      border-radius: 50%;
+    }
+    .hud-crosshair::before {
+      content: ''; position: absolute; top: 10px; left: -9px; width: 7px; height: 1.5px; background: #38bdf8;
+    }
+    .hud-crosshair::after {
+      content: ''; position: absolute; top: 10px; right: -9px; width: 7px; height: 1.5px; background: #38bdf8;
+    }
+    .hud-row {
+      display: flex; justify-content: space-between;
+      font-family: monospace; font-size: 12px; font-weight: 700; color: #38bdf8;
+      text-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+    }
+
+    /* Right Neural Connectome Telemetry Sidebar */
+    .neural-panel {
+      position: absolute;
+      top: 16px; right: 20px;
+      width: 270px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 12px;
+      padding: 14px;
+      z-index: 10;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    }
+    .neural-panel h2 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #38bdf8;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .compass-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 6px 0 12px;
+    }
+    #compass-canvas { width: 130px; height: 130px; }
+    .bar-group { margin-bottom: 8px; }
+    .bar-label {
+      display: flex; justify-content: space-between;
+      font-size: 10.5px; font-weight: 600; color: #94a3b8; margin-bottom: 3px;
+    }
+    .bar-track {
+      width: 100%; height: 7px; background: #1e293b; border-radius: 4px; overflow: hidden;
+    }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.08s ease-out; }
+    .bar-thrust { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+    .bar-dna-l { background: linear-gradient(90deg, #ec4899, #f43f5e); }
+    .bar-dna-r { background: linear-gradient(90deg, #8b5cf6, #a855f7); }
+    .stat-chip {
+      background: #1e293b; padding: 5px 8px; border-radius: 5px;
+      display: flex; justify-content: space-between; font-size: 10.5px; margin-top: 5px;
+    }
+    .stat-val { font-family: monospace; font-weight: 700; color: #38bdf8; }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="badge-title">
+      <h1><span class="status-pill"></span> FlyBrain 5" FPV Drone Arena</h1>
+      <p>Calibrated 6-DOF Dynamics &bull; 30m Cube Arena with Two Open Gates &bull; 1.5kg Frame</p>
+    </div>
+  </div>
+
+  <!-- FPV HUD Overlay -->
+  <div class="fpv-hud" id="hud">
+    <div class="hud-row">
+      <span id="hud-spd">SPD 0 KM/H</span>
+      <span id="hud-alt">ALT 5.0 M</span>
+    </div>
+    <div class="hud-crosshair"></div>
+    <div class="hud-row">
+      <span id="hud-stage">PHASE: APPROACH GATE 1</span>
+      <span id="hud-dist">DIST: 20.0 M</span>
+    </div>
+  </div>
+
+  <!-- Bottom Flight Controls -->
+  <div class="controls-panel">
+    <button id="btn-pause" onclick="togglePlay()">Pause</button>
+    <button class="btn-sec" id="btn-cam" onclick="cycleCamera()">Cam: Chase</button>
+    <button class="btn-sec" onclick="resetFlight()">Reset Flight</button>
+  </div>
+
+  <!-- Right Neural Central Complex Telemetry -->
+  <div class="neural-panel">
+    <h2>
+      Central Complex (CX)
+      <span style="font-size:9.5px; color:#10b981;">CALIBRATED</span>
+    </h2>
+
+    <div class="compass-container">
+      <canvas id="compass-canvas" width="130" height="130"></canvas>
+      <div style="font-size:9.5px; color:#94a3b8; margin-top:4px;">
+        EPG Ring Attractor (Heading &bull; Goal Vector)
+      </div>
+    </div>
+
+    <!-- P9 Forward Thrust -->
+    <div class="bar-group">
+      <div class="bar-label">
+        <span>P9 Forward Thrust</span>
+        <span id="p9-hz">0 Hz</span>
+      </div>
+      <div class="bar-track">
+        <div id="p9-bar" class="bar-fill bar-thrust" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- DNa01 Left Steering -->
+    <div class="bar-group">
+      <div class="bar-label">
+        <span>DNa01 Left (Yaw Left)</span>
+        <span id="dna-l-hz">0 Hz</span>
+      </div>
+      <div class="bar-track">
+        <div id="dna-l-bar" class="bar-fill bar-dna-l" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <!-- DNa01 Right Steering -->
+    <div class="bar-group">
+      <div class="bar-label">
+        <span>DNa01 Right (Yaw Right)</span>
+        <span id="dna-r-hz">0 Hz</span>
+      </div>
+      <div class="bar-track">
+        <div id="dna-r-bar" class="bar-fill bar-dna-r" style="width: 0%;"></div>
+      </div>
+    </div>
+
+    <div class="stat-chip">
+      <span>Speed:</span>
+      <span class="stat-val" id="stat-speed">0.0 km/h</span>
+    </div>
+    <div class="stat-chip">
+      <span>Thrust (4 Motors):</span>
+      <span class="stat-val" id="stat-thrust">14.7 N</span>
+    </div>
+    <div class="stat-chip">
+      <span>Heading Error:</span>
+      <span class="stat-val" id="stat-error">0.0&deg;</span>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 3D Three.js Scene Setup
+    // =========================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d16);
+    scene.fog = new THREE.FogExp2(0x090d16, 0.006);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Lighting
+    const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x0f172a, 0.7);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(40, 80, 20);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    // Ground Grid
+    const gridHelper = new THREE.GridHelper(300, 60, 0x0284c7, 0x1e293b);
+    scene.add(gridHelper);
+
+    // =========================================================================
+    // 3D CUBE ARENA WITH TWO OPEN GATES
+    // Dimensions: Width 24m, Height 10m, Depth 30m (Z from -15 to +15)
+    // Gate 1 (Entrance): Z = -15m (6m wide x 5m high opening)
+    // Gate 2 (Exit):     Z = +15m (6m wide x 5m high opening)
+    // =========================================================================
+    const cubeGroup = new THREE.Group();
+    scene.add(cubeGroup);
+
+    const cubeW = 24, cubeH = 10, cubeD = 30;
+    const gateW = 6.0, gateH = 5.0; // Open gate dimensions
+
+    // Materials
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.6,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide
+    });
+    const frameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+    const gate1Mat = new THREE.MeshBasicMaterial({ color: 0x10b981 }); // Neon Green Gate 1
+    const gate2Mat = new THREE.MeshBasicMaterial({ color: 0x06b6d4 }); // Neon Cyan Gate 2
+
+    // 1. Left and Right Walls
+    const sideWallGeo = new THREE.PlaneGeometry(cubeD, cubeH);
+    const leftWall = new THREE.Mesh(sideWallGeo, wallMat);
+    leftWall.position.set(-cubeW/2, cubeH/2, 0);
+    leftWall.rotation.y = Math.PI / 2;
+    cubeGroup.add(leftWall);
+
+    const rightWall = new THREE.Mesh(sideWallGeo, wallMat);
+    rightWall.position.set(cubeW/2, cubeH/2, 0);
+    rightWall.rotation.y = -Math.PI / 2;
+    cubeGroup.add(rightWall);
+
+    // 2. Ceiling and Floor panels
+    const roofGeo = new THREE.PlaneGeometry(cubeW, cubeD);
+    const roof = new THREE.Mesh(roofGeo, wallMat);
+    roof.position.set(0, cubeH, 0);
+    roof.rotation.x = Math.PI / 2;
+    cubeGroup.add(roof);
+
+    // 3. Front Wall (Entrance at Z = -15m) with Open Gate
+    // Built out of left panel, right panel, and top header to leave the gate center OPEN
+    const sideFlangeW = (cubeW - gateW) / 2; // (24 - 6)/2 = 9m
+    const flangeGeo = new THREE.PlaneGeometry(sideFlangeW, cubeH);
+
+    const fLeft = new THREE.Mesh(flangeGeo, wallMat);
+    fLeft.position.set(-(gateW/2 + sideFlangeW/2), cubeH/2, -cubeD/2);
+    cubeGroup.add(fLeft);
+
+    const fRight = new THREE.Mesh(flangeGeo, wallMat);
+    fRight.position.set((gateW/2 + sideFlangeW/2), cubeH/2, -cubeD/2);
+    cubeGroup.add(fRight);
+
+    const headerGeo = new THREE.PlaneGeometry(gateW, cubeH - gateH);
+    const fHeader = new THREE.Mesh(headerGeo, wallMat);
+    fHeader.position.set(0, gateH + (cubeH - gateH)/2, -cubeD/2);
+    cubeGroup.add(fHeader);
+
+    // 4. Back Wall (Exit at Z = +15m) with Open Gate
+    const bLeft = new THREE.Mesh(flangeGeo, wallMat);
+    bLeft.position.set(-(gateW/2 + sideFlangeW/2), cubeH/2, cubeD/2);
+    cubeGroup.add(bLeft);
+
+    const bRight = new THREE.Mesh(flangeGeo, wallMat);
+    bRight.position.set((gateW/2 + sideFlangeW/2), cubeH/2, cubeD/2);
+    cubeGroup.add(bRight);
+
+    const bHeader = new THREE.Mesh(headerGeo, wallMat);
+    bHeader.position.set(0, gateH + (cubeH - gateH)/2, cubeD/2);
+    cubeGroup.add(bHeader);
+
+    // 5. Glowing Neon Portals for Both Open Gates
+    function createGateFrame(color, zPos, label) {
+      const g = new THREE.Group();
+      g.position.set(0, gateH / 2, zPos);
+
+      // Rectangular portal frame outline
+      const borderThickness = 0.15;
+      const hBarGeo = new THREE.BoxGeometry(gateW + 0.3, borderThickness, 0.3);
+      const vBarGeo = new THREE.BoxGeometry(borderThickness, gateH, 0.3);
+      const m = new THREE.MeshStandardMaterial({
+        color: color, emissive: color, emissiveIntensity: 0.9, roughness: 0.2
+      });
+
+      const topBar = new THREE.Mesh(hBarGeo, m);
+      topBar.position.y = gateH / 2;
+      g.add(topBar);
+
+      const bottomBar = new THREE.Mesh(hBarGeo, m);
+      bottomBar.position.y = -gateH / 2;
+      g.add(bottomBar);
+
+      const leftBar = new THREE.Mesh(vBarGeo, m);
+      leftBar.position.x = -gateW / 2;
+      g.add(leftBar);
+
+      const rightBar = new THREE.Mesh(vBarGeo, m);
+      rightBar.position.x = gateW / 2;
+      g.add(rightBar);
+
+      // Corner LED beacon beacons
+      const beaconGeo = new THREE.SphereGeometry(0.25, 12, 12);
+      const beaconMat = new THREE.MeshBasicMaterial({ color: color });
+      [-gateW/2, gateW/2].forEach(bx => {
+        const b = new THREE.Mesh(beaconGeo, beaconMat);
+        b.position.set(bx, gateH/2, 0);
+        g.add(b);
+      });
+
+      return g;
+    }
+
+    const gate1 = createGateFrame(0x10b981, -cubeD / 2, "GATE 1 - ENTRANCE");
+    cubeGroup.add(gate1);
+
+    const gate2 = createGateFrame(0x06b6d4, cubeD / 2, "GATE 2 - EXIT");
+    cubeGroup.add(gate2);
+
+    // Inside Cube Floor Runway Lights
+    for (let rz = -14; rz <= 14; rz += 4) {
+      [-2.5, 2.5].forEach(rx => {
+        const lightGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.1, 8);
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+        const l = new THREE.Mesh(lightGeo, lightMat);
+        l.position.set(rx, 0.05, rz);
+        cubeGroup.add(l);
+      });
+    }
+
+    // Outer Cube Structural Wireframe Box
+    const boxFrameGeo = new THREE.BoxGeometry(cubeW, cubeH, cubeD);
+    const boxFrameEdges = new THREE.EdgesGeometry(boxFrameGeo);
+    const boxFrameLine = new THREE.LineSegments(
+      boxFrameEdges,
+      new THREE.LineBasicMaterial({ color: 0x1e293b, linewidth: 1.5 })
+    );
+    boxFrameLine.position.y = cubeH / 2;
+    cubeGroup.add(boxFrameLine);
+
+    // =========================================================================
+    // 3D 5-INCH FPV DRONE MODEL
+    // =========================================================================
+    const droneGroup = new THREE.Group();
+    scene.add(droneGroup);
+
+    const carbonMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.8 });
+    const motorMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.9 });
+    const propMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, transparent: true, opacity: 0.75 });
+
+    // Fuselage center
+    const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.7), carbonMat);
+    droneGroup.add(bodyMesh);
+
+    // LiPo 6S Battery
+    const lipoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.5 }));
+    lipoMesh.position.set(0, 0.14, -0.05);
+    droneGroup.add(lipoMesh);
+
+    // Tilted FPV Camera (35-degree uptilt)
+    const camMount = new THREE.Group();
+    camMount.position.set(0, 0.05, 0.35);
+    camMount.rotation.x = -Math.PI / 5.1;
+    const camMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.15, 16), new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.1 }));
+    camMesh.rotation.x = Math.PI / 2;
+    camMount.add(camMesh);
+    droneGroup.add(camMount);
+
+    // 4 Motors & Props
+    const armLength = 0.55;
+    const motorProps = [];
+    [
+      { x: armLength, z: armLength },
+      { x: -armLength, z: armLength },
+      { x: armLength, z: -armLength },
+      { x: -armLength, z: -armLength },
+    ].forEach((pos, idx) => {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, armLength * 1.4, 8), carbonMat);
+      arm.position.set(pos.x / 2, 0, pos.z / 2);
+      arm.rotation.z = Math.PI / 2;
+      arm.rotation.y = Math.atan2(pos.z, pos.x);
+      droneGroup.add(arm);
+
+      const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.1, 16), motorMat);
+      motor.position.set(pos.x, 0.06, pos.z);
+      droneGroup.add(motor);
+
+      const propGroup = new THREE.Group();
+      propGroup.position.set(pos.x, 0.12, pos.z);
+      for (let i = 0; i < 3; i++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.008, 0.32), propMat);
+        blade.position.z = 0.16;
+        blade.rotation.y = (i * 2 * Math.PI) / 3;
+        propGroup.add(blade);
+      }
+      droneGroup.add(propGroup);
+      motorProps.push(propGroup);
+    });
+
+    // Vapor Flight Trail
+    const maxTrailPoints = 140;
+    const trailPositions = new Float32Array(maxTrailPoints * 3);
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    const trailLine = new THREE.Line(
+      trailGeo,
+      new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.7 })
+    );
+    scene.add(trailLine);
+    let trailCount = 0;
+
+    // =========================================================================
+    // CALIBRATED FLY BRAIN GUIDANCE & 6-DOF FLIGHT DYNAMICS
+    // =========================================================================
+    // Calibrated Symmetric Racetrack around & through 24x10x30m Cube Arena:
+    const gateWaypoints = [
+      { pos: [ 0.0, 5.0, -45.0], name: "RUNWAY ENTRY" },
+      { pos: [ 0.0, 5.0, -30.0], name: "RUNWAY LINEUP" },
+      { pos: [ 0.0, 5.0, -15.0], name: "GATE 1 ENTRANCE" },
+      { pos: [ 0.0, 5.0,   0.0], name: "CUBE INTERIOR" },
+      { pos: [ 0.0, 5.0,  15.0], name: "GATE 2 EXIT" },
+      { pos: [ 0.0, 5.5,  30.0], name: "EXIT STRAIGHT" },
+      { pos: [ 3.5, 5.5,  38.5], name: "NORTH ARC Q1" },
+      { pos: [12.0, 5.5,  42.0], name: "NORTH ARC APEX" },
+      { pos: [20.5, 5.5,  38.5], name: "NORTH ARC Q3" },
+      { pos: [24.0, 5.5,  30.0], name: "RETURN LEG NORTH" },
+      { pos: [24.0, 5.5,   0.0], name: "RETURN LEG MID" },
+      { pos: [24.0, 5.0, -45.0], name: "SOUTH ARC ENTRY" },
+      { pos: [20.5, 5.0, -53.5], name: "SOUTH ARC Q1" },
+      { pos: [12.0, 5.0, -57.0], name: "SOUTH ARC APEX" },
+      { pos: [ 3.5, 5.0, -53.5], name: "SOUTH ARC Q3" },
+    ];
+    let wpIdx = 0;
+    let lapCount = 0;
+
+    const droneState = {
+      x: 0, y: 5.0, z: -45.0,
+      vx: 0, vy: 0, vz: 0,
+      yaw: 0, yaw_rate: 0, roll: 0, pitch: 0,
+      speed_kmh: 0, thrust_n: 14.71
+    };
+
+    let isPaused = false;
+    let cameraMode = 0;
+
+    function updateFlightSimulation() {
+      const target = gateWaypoints[wpIdx].pos;
+
+      // 1. Line-of-sight vector to active waypoint
+      const dx = target[0] - droneState.x;
+      const dy = target[1] - droneState.y;
+      const dz = target[2] - droneState.z;
+      const dist3d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+      // Calibrated waypoint arrival check
+      const isGate1 = (wpIdx === 2);
+      const isGate2 = (wpIdx === 4);
+      const isRunway = (wpIdx <= 5);
+
+      let passed = (dist3d < 5.0);
+      if (isRunway && droneState.z >= target[2]) {
+        passed = true;
+      }
+
+      if (passed) {
+        wpIdx = (wpIdx + 1) % gateWaypoints.length;
+        if (wpIdx === 0) lapCount++;
+      }
+
+      // 2. Biological Central Complex: EPG Compass Ring & Goal Vector Phase
+      const goalAzimuth = Math.atan2(dx, dz); // 0 = +Z forward
+      let headingError = goalAzimuth - droneState.yaw;
+      while (headingError > Math.PI) headingError -= 2 * Math.PI;
+      while (headingError < -Math.PI) headingError += 2 * Math.PI;
+
+      // Calibrated PD Guidance (DNa01/DNa02 Descending Neurons)
+      const kp = 2.60;
+      const kd = 0.32;
+      const rawSteering = (headingError * kp) - (droneState.yaw_rate * kd);
+      const steeringCmd = Math.max(-1.0, Math.min(1.0, rawSteering));
+
+      const dnaL_hz = headingError < 0 ? Math.min(180, Math.abs(headingError) * 115 + 8) : 5;
+      const dnaR_hz = headingError > 0 ? Math.min(180, Math.abs(headingError) * 115 + 8) : 5;
+
+      // Calibrated P9 Forward Locomotion & Adaptive Speed Regulation
+      const alignment = Math.max(0.0, Math.cos(headingError));
+      const targetSpd = 32.0 + 25.0 * Math.pow(alignment, 3);
+      const spdErr = targetSpd - droneState.speed_kmh;
+      const throttle = Math.max(0.12, Math.min(0.85, 0.35 + spdErr * 0.025));
+      const p9_hz = throttle * 180.0;
+
+      // 3. 6-DOF Drone Aerodynamics & Dynamics Integration (dt = 0.02s)
+      const dt = 0.02;
+      const maxThrust = 14.71 * 6.5; // ~95 N max thrust for 1.5kg
+      const maxSpeedMs = 150.0 / 3.6;
+
+      // Critically damped yaw & banking rate
+      const maxRate = Math.PI * 1.1; // ~200 deg/s
+      droneState.yaw_rate += (steeringCmd * maxRate - droneState.yaw_rate) * 0.40;
+      droneState.yaw = (droneState.yaw + droneState.yaw_rate * dt) % (2 * Math.PI);
+
+      // Coordinated banking roll into turns
+      const speedNorm = Math.min(1.0, (droneState.speed_kmh / 3.6) / 25.0);
+      const targetRoll = -steeringCmd * 0.70 * (0.3 + 0.7 * speedNorm);
+      droneState.roll += (targetRoll - droneState.roll) * 0.30;
+
+      // Nose-down pitch from P9 throttle
+      const targetPitch = throttle * 0.87; // ~50 deg pitch
+      droneState.pitch += (targetPitch - droneState.pitch) * 0.25;
+
+      // Pure quadcopter equilibrium thrust (altitude locked at 5.0m)
+      const altErr = target[1] - droneState.y;
+      const altP = Math.max(-30, Math.min(45, altErr * 14.0));
+      const altD = -droneState.vy * 5.0;
+      const tiltCos = Math.max(0.25, Math.cos(droneState.pitch) * Math.cos(droneState.roll));
+      droneState.thrust_n = Math.max(1.0, Math.min(maxThrust, (14.71 + altP + altD) / tiltCos));
+
+      // Accelerations
+      const fForward = droneState.thrust_n * Math.sin(droneState.pitch);
+      const fLateral = -droneState.thrust_n * Math.sin(droneState.roll);
+      const fVertical = droneState.thrust_n * Math.cos(droneState.pitch) * Math.cos(droneState.roll) - 14.71;
+
+      const fx = fForward * Math.sin(droneState.yaw) + fLateral * Math.cos(droneState.yaw);
+      const fz = fForward * Math.cos(droneState.yaw) - fLateral * Math.sin(droneState.yaw);
+
+      // Drag
+      const dragCoeffFwd = (maxThrust * Math.sin(0.87)) / (maxSpeedMs * maxSpeedMs);
+      const ax = (fx - dragCoeffFwd * 1.4 * droneState.vx * Math.abs(droneState.vx)) / 1.5;
+      const ay = (fVertical - 0.18 * droneState.vy * Math.abs(droneState.vy)) / 1.5;
+      const az = (fz - dragCoeffFwd * droneState.vz * Math.abs(droneState.vz)) / 1.5;
+
+      droneState.vx += ax * dt;
+      droneState.vy += ay * dt;
+      droneState.vz += az * dt;
+
+      droneState.x += droneState.vx * dt;
+      droneState.y = Math.max(0.5, droneState.y + droneState.vy * dt);
+      droneState.z += droneState.vz * dt;
+
+      droneState.speed_kmh = Math.sqrt(droneState.vx**2 + droneState.vy**2 + droneState.vz**2) * 3.6;
+
+      // Update 3D Visual Mesh
+      droneGroup.position.set(droneState.x, droneState.y, droneState.z);
+      droneGroup.rotation.set(droneState.pitch, droneState.yaw, droneState.roll, 'YXZ');
+
+      // Spin props
+      const spinSpeed = 0.35 + (throttle * 1.6);
+      motorProps.forEach((p, idx) => {
+        p.rotation.y += (idx % 2 === 0 ? spinSpeed : -spinSpeed);
+      });
+
+      // Update flight trail
+      trailPositions[trailCount * 3] = droneState.x;
+      trailPositions[trailCount * 3 + 1] = droneState.y;
+      trailPositions[trailCount * 3 + 2] = droneState.z;
+      trailCount = (trailCount + 1) % maxTrailPoints;
+      trailGeo.attributes.position.needsUpdate = true;
+
+      // Update Telemetry & EPG Compass
+      updateTelemetry(dist3d, headingError, p9_hz, dnaL_hz, dnaR_hz, goalAzimuth);
+    }
+
+    // =========================================================================
+    // HUD & NEURAL CANVAS TELEMETRY
+    // =========================================================================
+    const compassCanvas = document.getElementById('compass-canvas');
+    const ctx = compassCanvas.getContext('2d');
+
+    function drawCompass(droneYaw, goalAzimuth) {
+      const cx = 65, cy = 65, r = 46;
+      ctx.clearRect(0, 0, 130, 130);
+
+      // Ring Track
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 9;
+      ctx.stroke();
+
+      // 16 EPG Ring Attractor Sectors
+      for (let i = 0; i < 16; i++) {
+        const ang = (i * 2 * Math.PI) / 16;
+        const diff = Math.atan2(Math.sin(ang - droneYaw), Math.cos(ang - droneYaw));
+        const bump = Math.exp(-(diff * diff) / (2 * 0.38 * 0.38));
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, ang - 0.16, ang + 0.16);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 + bump * 0.85})`;
+        ctx.lineWidth = 7 + bump * 4;
+        ctx.stroke();
+      }
+
+      // Fan-shaped Body Goal Vector (Green)
+      const gx = cx + Math.sin(goalAzimuth) * 34;
+      const gy = cy - Math.cos(goalAzimuth) * 34;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(gx, gy);
+      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2.5; ctx.stroke();
+
+      // Heading Needle (Red)
+      const hx = cx + Math.sin(droneYaw) * 40;
+      const hy = cy - Math.cos(droneYaw) * 40;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(hx, hy);
+      ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 2.2; ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI);
+      ctx.fillStyle = '#38bdf8'; ctx.fill();
+    }
+
+    function updateTelemetry(dist3d, headingErr, p9, dnaL, dnaR, goalAzimuth) {
+      document.getElementById('hud-spd').innerText = `SPD ${Math.round(droneState.speed_kmh)} KM/H`;
+      document.getElementById('hud-alt').innerText = `ALT ${droneState.y.toFixed(1)} M`;
+      document.getElementById('hud-stage').innerText = `GATE: ${gateWaypoints[wpIdx].name}`;
+      document.getElementById('hud-dist').innerText = `DIST: ${dist3d.toFixed(1)} M`;
+
+      document.getElementById('p9-hz').innerText = `${Math.round(p9)} Hz`;
+      document.getElementById('p9-bar').style.width = `${Math.min(100, (p9 / 180) * 100)}%`;
+
+      document.getElementById('dna-l-hz').innerText = `${Math.round(dnaL)} Hz`;
+      document.getElementById('dna-l-bar').style.width = `${Math.min(100, (dnaL / 160) * 100)}%`;
+
+      document.getElementById('dna-r-hz').innerText = `${Math.round(dnaR)} Hz`;
+      document.getElementById('dna-r-bar').style.width = `${Math.min(100, (dnaR / 160) * 100)}%`;
+
+      document.getElementById('stat-speed').innerText = `${droneState.speed_kmh.toFixed(1)} km/h`;
+      document.getElementById('stat-thrust').innerText = `${droneState.thrust_n.toFixed(1)} N`;
+      document.getElementById('stat-error').innerText = `${(headingErr * 57.3).toFixed(1)}°`;
+
+      drawCompass(droneState.yaw, goalAzimuth);
+    }
+
+    // Camera Views
+    function cycleCamera() {
+      cameraMode = (cameraMode + 1) % 3;
+      const btn = document.getElementById('btn-cam');
+      if (cameraMode === 0) btn.innerText = "Cam: Chase";
+      else if (cameraMode === 1) btn.innerText = "Cam: FPV Cockpit";
+      else btn.innerText = "Cam: Free Orbit";
+    }
+
+    function updateCamera() {
+      if (cameraMode === 0) {
+        // Chase Cam (behind and above)
+        const offsetDist = 5.8;
+        const camX = droneState.x - Math.sin(droneState.yaw) * offsetDist;
+        const camZ = droneState.z - Math.cos(droneState.yaw) * offsetDist;
+        const camY = droneState.y + 2.0;
+        camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.12);
+        camera.lookAt(droneState.x, droneState.y + 0.3, droneState.z);
+      } else if (cameraMode === 1) {
+        // FPV Cockpit
+        camera.position.set(droneState.x, droneState.y + 0.08, droneState.z);
+        const lookX = droneState.x + Math.sin(droneState.yaw) * 20;
+        const lookZ = droneState.z + Math.cos(droneState.yaw) * 20;
+        const lookY = droneState.y + Math.tan(0.6) * 10;
+        camera.lookAt(lookX, lookY, lookZ);
+      } else {
+        controls.update();
+      }
+    }
+
+    function togglePlay() {
+      isPaused = !isPaused;
+      document.getElementById('btn-pause').innerText = isPaused ? "Resume" : "Pause";
+    }
+
+    function resetFlight() {
+      droneState.x = 0; droneState.y = 5.0; droneState.z = -35.0;
+      droneState.vx = 0; droneState.vy = 0; droneState.vz = 0;
+      droneState.yaw = 0; droneState.yaw_rate = 0;
+      droneState.roll = 0; droneState.pitch = 0;
+      wpIdx = 0;
+      trailCount = 0;
+    }
+
+    // Animation Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      if (!isPaused) {
+        updateFlightSimulation();
+      }
+      updateCamera();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
